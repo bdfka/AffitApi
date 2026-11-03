@@ -1,158 +1,92 @@
-
-
-
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 
 // ==========================================
-// НАСТРОЙКИ (ВСТАВЬ СВОИ ЗНАЧЕНИЯ)
+// НАСТРОЙКИ
 // ==========================================
 const BOT_TOKEN = '9061722239:AAHxzfgcKz6vJI8GvdttBDUrjdkE2NwrwKU';
 const ADMIN_ID = '8640405491';
+const RENDER_URL = 'https://affitapi.onrender.com'; // Ссылка на твой сервис в Render (без слэша на конце)
 
-// Инициализация бота и веб-сервера
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const app = express();
-app.use(express.json());
 
-// ==========================================
-// ВЕБ-СЕРВЕР ДЛЯ УВЕДОМЛЕНИЙ С САЙТА (И ДЛЯ RENDER)
-// ==========================================
-app.post('/api/notify-download', async (req, res) => {
-    const { userId, resourceName } = req.body;
-    
-    if (!userId) return res.status(400).json({ error: 'No userId' });
+// Файл, где мы будем хранить связки "код -> ссылка"
+const DB_FILE = path.join(__dirname, 'database.json');
 
-    try {
-        await bot.sendMessage(userId, 
-            `✅ Вы успешно скачали ресурс:\n📦 *${resourceName}*\n\nСпасибо за использование AffitDev!`, 
-            { parse_mode: 'Markdown' }
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Ошибка отправки уведомления:', error.message);
-        res.status(500).json({ error: 'Failed to send message' });
-    }
-});
-
-// Этот маршрут нужен, чтобы Render не усыплял сервер
-app.get('/', (req, res) => {
-    res.send('Bot is running!');
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Web server running on port ${PORT}`);
-});
-
-// ==========================================
-// ПРОВЕРКА НА АДМИНА
-// ==========================================
-function isAdmin(msg) {
-    return msg.from && msg.from.id.toString() === ADMIN_ID;
+// Создаем файл БД, если его нет
+if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, JSON.stringify({}));
 }
 
 // ==========================================
-// ПОЛЬЗОВАТЕЛЬСКИЕ КОМАНДЫ
+// ВЕБ-СЕРВЕР (Редирект и пробуждение)
+// ==========================================
+app.get('/', (req, res) => res.send('Bot is running!'));
+
+// Обработка коротких ссылок для скачивания
+app.get('/dl/:code', (req, res) => {
+    const code = req.params.code;
+    try {
+        const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        const fileUrl = db[code];
+
+        if (fileUrl) {
+            // Перенаправляем пользователя на прямое скачивание с Telegram
+            res.redirect(fileUrl);
+        } else {
+            res.status(404).send('Файл не найден или ссылка устарела.');
+        }
+    } catch (e) {
+        res.status(500).send('Ошибка сервера.');
+    }
+});
+
+app.listen(process.env.PORT || 3000, () => console.log('Web server running'));
+
+// ==========================================
+// АДМИН-ПАНЕЛЬ (Генерация короткой ссылки)
 // ==========================================
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, 
-        `Привет, ${msg.from.first_name}! 👋\n\nДобро пожаловать в *AffitDev*.\n\n🔹 /account — Личный кабинет\n🔹 /list — Меню ресурсов\n🔹 /help — Помощь`, 
-        { parse_mode: 'Markdown' }
-    );
+    bot.sendMessage(msg.chat.id, `Привет! Это бот AffitDev.`);
 });
 
-bot.onText(/\/account/, (msg) => {
-    bot.sendMessage(msg.chat.id, `👤 *Личный кабинет*\n\nПерейдите на сайт:\n🔗 bdfka.github.io/AffitDev/profile.html`, { parse_mode: 'Markdown' });
-});
-
-bot.onText(/\/list/, (msg) => {
-    bot.sendMessage(msg.chat.id, `📦 *Меню ресурсов*\n\nВсе доступные ресурсы на сайте:\n🔗 bdfka.github.io/AffitDev/resources.html`, { parse_mode: 'Markdown' });
-});
-
-bot.onText(/\/help/, (msg) => {
-    bot.sendMessage(msg.chat.id, `❓ *Помощь*\n\nЕсли возникли проблемы, напишите админу: @MinecraftCoderBdfka`);
-});
-
-// ==========================================
-// АДМИН-ПАНЕЛЬ
-// ==========================================
 bot.onText(/\/admin/, (msg) => {
-    const chatId = msg.chat.id;
-
-    if (!isAdmin(msg)) {
-        return bot.sendMessage(chatId, '⛔ У вас нет доступа к этой команде.');
-    }
-
-    const opts = {
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: '📤 Получить ссылку на файл', callback_data: 'upload_resource' }],
-                [{ text: '📊 Статистика', callback_data: 'stats' }]
-            ]
-        }
-    };
-
-    bot.sendMessage(chatId, '👑 *Админ-панель AffitDev*\nВыберите действие:', { parse_mode: 'Markdown', reply_markup: opts.reply_markup });
+    if (msg.from.id.toString() !== ADMIN_ID) return;
+    bot.sendMessage(msg.chat.id, '👑 Отправьте файл, чтобы получить короткую ссылку для сайта.');
 });
 
-// Обработка кнопок админки
-bot.on('callback_query', async (query) => {
-    const chatId = query.message.chat.id;
-    const data = query.data;
+bot.on('document', async (msg) => {
+    if (msg.from.id.toString() !== ADMIN_ID) return;
 
-    if (query.from.id.toString() !== ADMIN_ID) {
-        return bot.answerCallbackQuery(query.id, { text: 'Доступ запрещен', show_alert: true });
-    }
+    const fileId = msg.document.file_id;
+    const fileName = msg.document.file_name;
+    
+    try {
+        // 1. Получаем прямую ссылку на файл от Telegram
+        const fileInfo = await bot.getFile(fileId);
+        const directUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileInfo.file_path}`;
 
-    if (data === 'upload_resource') {
-        bot.sendMessage(chatId, '📎 Отправьте файл (мод, карту, сборку), и я сгенерирую прямую ссылку для сайта.');
-        
-        bot.once('document', async (msg) => {
-            if (!isAdmin(msg)) return;
+        // 2. Генерируем короткий случайный код (например, 6 символов)
+        const shortCode = crypto.randomBytes(3).toString('hex');
 
-            const fileId = msg.document.file_id;
-            const fileName = msg.document.file_name;
-            
-            try {
-                console.log(`[LOG] Получен файл: ${fileName} (ID: ${fileId})`);
-                
-                // ЗАПРАШИВАЕМ ИНФОРМАЦИЮ О ФАЙЛЕ
-                const fileInfo = await bot.getFile(fileId);
-                
-                // ВЫВОДИМ ИНФОРМАЦИЮ В КОНСОЛЬ (Для отладки на Render)
-                console.log('[LOG] Ответ от Telegram (fileInfo):', fileInfo);
+        // 3. Сохраняем в наш локальный файл database.json
+        const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        db[shortCode] = directUrl;
+        fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 
-                // Генерируем ссылку
-                const fileLink = await bot.getFileLink(fileId);
-                console.log('[LOG] Сгенерированная ссылка:', fileLink);
+        // 4. Формируем ссылку на наш сервер Render
+        const finalLink = `${RENDER_URL}/dl/${shortCode}`;
 
-                bot.sendMessage(chatId, 
-                    `✅ *Файл получен!*\n\n📄 Имя: \`${fileName}\`\n🔗 Ссылка: ${fileLink}\n\nСкопируйте ссылку и вставьте её в админ-панель сайта.`, 
-                    { parse_mode: 'HTML' }
-                );
-            } catch (error) {
-                console.error('[ERROR] Ошибка при получении файла:', error);
-                bot.sendMessage(chatId, `❌ Ошибка: ${error.message}`);
-            }
-        });
-    }
-
-    if (data === 'stats') {
-        bot.sendMessage(chatId, `📊 *Статистика*\n\nСервер работает исправно.`, { parse_mode: 'Markdown' });
-    }
-
-    bot.answerCallbackQuery(query.id);
-});
-
-// ==========================================
-// ЗАЩИТА ОТ СПАМА ФАЙЛАМИ
-// ==========================================
-bot.on('document', (msg) => {
-    if (!isAdmin(msg)) {
-        bot.sendMessage(msg.chat.id, '⛔ Отправка файлов доступна только администратору.');
+        bot.sendMessage(msg.chat.id, 
+            `✅ Файл получен!\n\n📄 Имя: ${fileName}\n\n🔗 <b>Ссылка для сайта:</b>\n<code>${finalLink}</code>\n\nВставьте эту ссылку в админ-панель сайта.`, 
+            { parse_mode: 'HTML' }
+        );
+    } catch (error) {
+        bot.sendMessage(msg.chat.id, `❌ Ошибка: ${error.message}`);
     }
 });
-
-console.log('Бот запущен. Ожидание сообщений...');
