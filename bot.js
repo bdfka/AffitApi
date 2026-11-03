@@ -154,7 +154,7 @@ bot.on('successful_payment', async (msg) => {
     bot.sendMessage(ADMIN_ID, `💰 Новое пополнение! Пользователь @${msg.from.username} купил ${starsAmount} Stars (${rubAmount} ₽).`);
 
     // Отвечаем пользователю
-    bot.sendMessage(chatId, `✅ *Оплата успешна!*\nНачислено: ${starsAmount} Stars\nСумма: ${rubAmount} ₽\n\nСпасибо за поддержку проекта!`, { parse_mode: 'Markdown' });
+    bot.sendMessage(chatId, `✅ *Оплата успешна!*\nНачислено: ${starsAmount} ₽\nСумма: ${rubAmount} ₽\n\nСпасибо за поддержку проекта!`, { parse_mode: 'Markdown' });
 });
 
 // ==========================================
