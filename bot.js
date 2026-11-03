@@ -118,12 +118,12 @@ bot.onText(/\/buy/, (msg) => {
     const opts = {
         reply_markup: {
             inline_keyboard: [
-                [{ text: '50 ⭐ (100 ₽)', callback_data: 'buy_50' }, { text: '100 ⭐ (200 ₽)', callback_data: 'buy_100' }],
-                [{ text: '250 ⭐ (500 ₽)', callback_data: 'buy_250' }, { text: '500 ⭐ (1000 ₽)', callback_data: 'buy_500' }]
+                [{ text: '100₽ (50 ⭐)', callback_data: 'buy_50' }, { text: '200₽ (100 ⭐)', callback_data: 'buy_100' }],
+                [{ text: '500$ (250 ⭐)', callback_data: 'buy_250' }, { text: '1000₽ (500 ⭐)', callback_data: 'buy_500' }]
             ]
         }
     };
-    bot.sendMessage(chatId, '💎 *Пополнение баланса*\nВыберите пакет (1 Star = 2 ₽):', { parse_mode: 'Markdown', reply_markup: opts.reply_markup });
+    bot.sendMessage(chatId, '💎 *Пополнение баланса*\nВыберите пакет (1 ⭐ = 2 ₽):', { parse_mode: 'Markdown', reply_markup: opts.reply_markup });
 });
 
 // Обработка кнопок покупки
