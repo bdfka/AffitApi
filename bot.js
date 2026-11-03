@@ -10,54 +10,69 @@ const crypto = require('crypto');
 // ==========================================
 const BOT_TOKEN = '9061722239:AAHxzfgcKz6vJI8GvdttBDUrjdkE2NwrwKU';
 const ADMIN_ID = '8640405491';
-const RENDER_URL = 'https://affitapi.onrender.com'; // Ссылка на твой сервис в Render (без слэша на конце)
+const BOT_USERNAME = 'AffitDev_bot'; // Юзернейм бота БЕЗ собаки (@)
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const app = express();
 
-// Файл, где мы будем хранить связки "код -> ссылка"
-const DB_FILE = path.join(__dirname, 'database.json');
+// Файл для хранения связок "Короткий код -> ID файла"
+const DB_FILE = path.join(__dirname, 'files.json');
 
-// Создаем файл БД, если его нет
+// Создаем файл, если его нет
 if (!fs.existsSync(DB_FILE)) {
     fs.writeFileSync(DB_FILE, JSON.stringify({}));
 }
 
 // ==========================================
-// ВЕБ-СЕРВЕР (Редирект и пробуждение)
+// ВЕБ-СЕРВЕР (Чтобы Render не засыпал)
 // ==========================================
 app.get('/', (req, res) => res.send('Bot is running!'));
-
-// Обработка коротких ссылок для скачивания
-app.get('/dl/:code', (req, res) => {
-    const code = req.params.code;
-    try {
-        const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-        const fileUrl = db[code];
-
-        if (fileUrl) {
-            // Перенаправляем пользователя на прямое скачивание с Telegram
-            res.redirect(fileUrl);
-        } else {
-            res.status(404).send('Файл не найден или ссылка устарела.');
-        }
-    } catch (e) {
-        res.status(500).send('Ошибка сервера.');
-    }
-});
-
 app.listen(process.env.PORT || 3000, () => console.log('Web server running'));
 
 // ==========================================
-// АДМИН-ПАНЕЛЬ (Генерация короткой ссылки)
+// ОБРАБОТКА ССЫЛОК (Скачивание через бота)
 // ==========================================
-bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, `Привет! Это бот AffitDev.`);
+bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const payload = match[1]; // Короткий код (например, "a1b2c3")
+
+    if (!payload) {
+        return bot.sendMessage(chatId, 
+            `Привет, ${msg.from.first_name}! 👋\n\nДобро пожаловать в *AffitDev*.\n\n🔹 /account — Личный кабинет\n🔹 /list — Меню ресурсов`, 
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    if (payload) {
+        try {
+            const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+            const fileData = db[payload];
+
+            if (!fileData) {
+                return bot.sendMessage(chatId, '❌ Файл не найден. Возможно, ссылка устарела.');
+            }
+
+            bot.sendMessage(chatId, '⏳ Отправляю ваш файл...');
+
+            // Отправляем файл пользователю (копируем из хранилища Telegram)
+            await bot.sendDocument(chatId, fileData.file_id, {
+                caption: `📦 *${fileData.file_name}*\n\nСкачано с AffitDev.`, 
+                parse_mode: 'Markdown'
+            });
+            
+        } catch (error) {
+            console.error('Ошибка:', error);
+            bot.sendMessage(chatId, '❌ Произошла ошибка при отправке файла.');
+        }
+    }
 });
 
+// ==========================================
+// АДМИН-ПАНЕЛЬ (Загрузка файла и генерация ссылки)
+// ==========================================
 bot.onText(/\/admin/, (msg) => {
     if (msg.from.id.toString() !== ADMIN_ID) return;
-    bot.sendMessage(msg.chat.id, '👑 Отправьте файл, чтобы получить короткую ссылку для сайта.');
+    bot.sendMessage(msg.chat.id, '👑 Отправьте файл, чтобы получить ссылку на скачивание через бота.');
 });
 
 bot.on('document', async (msg) => {
@@ -67,23 +82,22 @@ bot.on('document', async (msg) => {
     const fileName = msg.document.file_name;
     
     try {
-        // 1. Получаем прямую ссылку на файл от Telegram
-        const fileInfo = await bot.getFile(fileId);
-        const directUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileInfo.file_path}`;
-
-        // 2. Генерируем короткий случайный код (например, 6 символов)
+        // Генерируем случайный 6-значный код
         const shortCode = crypto.randomBytes(3).toString('hex');
 
-        // 3. Сохраняем в наш локальный файл database.json
+        // Сохраняем ID файла и его имя в локальный файл
         const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-        db[shortCode] = directUrl;
+        db[shortCode] = {
+            file_id: fileId,
+            file_name: fileName
+        };
         fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 
-        // 4. Формируем ссылку на наш сервер Render
-        const finalLink = `${RENDER_URL}/dl/${shortCode}`;
+        // Формируем ссылку на бота (Deep Link)
+        const deepLink = `https://t.me/${BOT_USERNAME}?start=${shortCode}`;
 
         bot.sendMessage(msg.chat.id, 
-            `✅ Файл получен!\n\n📄 Имя: ${fileName}\n\n🔗 <b>Ссылка для сайта:</b>\n<code>${finalLink}</code>\n\nВставьте эту ссылку в админ-панель сайта.`, 
+            `✅ Файл загружен!\n\n📄 Имя: ${fileName}\n\n🔗 <b>Ссылка для сайта:</b>\n<code>${deepLink}</code>\n\nВставьте эту ссылку в админ-панель сайта. Когда пользователь нажмет "Скачать", он перейдет в бота и получит файл.`, 
             { parse_mode: 'HTML' }
         );
     } catch (error) {
