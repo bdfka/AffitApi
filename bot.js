@@ -149,6 +149,141 @@ bot.onText(/\/admin/, (msg) => {
     bot.sendMessage(msg.chat.id, '👑 Отправьте файл, чтобы получить ссылку на скачивание через бота.');
 });
 
+// ==========================================
+// ПОПОЛНЕНИЕ БАЛАНСА (КОМАНДА /buy)
+// ==========================================
+
+// 1. Сама команда /buy
+bot.onText(/\/buy/, (msg) => {
+    const chatId = msg.chat.id;
+    const opts = {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '50 ⭐ (100 ₽)', callback_data: 'buy_50' },
+                    { text: '100 ⭐ (200 ₽)', callback_data: 'buy_100' }
+                ],
+                [
+                    { text: '250 ⭐ (500 ₽)', callback_data: 'buy_250' },
+                    { text: '500 ⭐ (1000 ₽)', callback_data: 'buy_500' }
+                ],
+                [
+                    { text: 'Своя сумма', callback_data: 'buy_custom' }
+                ]
+            ]
+        }
+    };
+
+    bot.sendMessage(chatId, 
+        '💎 *Пополнение баланса AffitDev*\n\nВыберите пакет Telegram Stars.\nКурс: 1 Star = 2 ₽.\n\n👇 Нажмите на кнопку ниже:', 
+        { parse_mode: 'Markdown', reply_markup: opts.reply_markup }
+    );
+});
+
+// 2. Обработка нажатий на кнопки выбора суммы
+bot.on('callback_query', async (query) => {
+    const chatId = query.message.chat.id;
+    const data = query.data;
+
+    // Если пользователь нажал кнопку покупки (например, buy_100)
+    if (data.startsWith('buy_')) {
+        const amount = data.split('_')[1]; // Получаем число (100, 250 и т.д.)
+
+        if (amount === 'custom') {
+            // Если выбрал свою сумму
+            bot.sendMessage(chatId, 'Введите желаемое количество Stars (числом от 10 до 1000):');
+            
+            // Ждем следующее текстовое сообщение от этого пользователя
+            bot.once('message', async (msg) => {
+                const customAmount = parseInt(msg.text);
+                if (isNaN(customAmount) || customAmount < 10 || customAmount > 1000) {
+                    return bot.sendMessage(chatId, '❌ Ошибка: введите число от 10 до 1000.');
+                }
+                // Выставляем счет на кастомную сумму
+                await sendStarsInvoice(chatId, customAmount, msg.from.id);
+            });
+            return;
+        }
+
+        // Если выбрана готовая сумма
+        await sendStarsInvoice(chatId, parseInt(amount), query.from.id);
+    }
+
+    bot.answerCallbackQuery(query.id);
+});
+
+// 3. Функция выставления счета (Invoice)
+async function sendStarsInvoice(chatId, amountStars, userId) {
+    try {
+        await bot.sendInvoice(chatId, 
+            'Пополнение баланса', 
+            `Пополнение на ${amountStars} Stars (${amountStars * 2} ₽)`, 
+            `pay_${userId}_${Date.now()}`, // Payload (содержит ID юзера)
+            '', // provider_token (пустой для Stars)
+            'XTR', // Валюта Telegram Stars
+            [{ label: 'Telegram Stars', amount: amountStars }] 
+        );
+    } catch (e) {
+        bot.sendMessage(chatId, '❌ Ошибка создания счета: ' + e.message);
+    }
+}
+
+// 4. Подтверждение оплаты (ОБЯЗАТЕЛЬНО)
+bot.on('pre_checkout_query', async (query) => {
+    await bot.answerPreCheckoutQuery(query.id, true);
+});
+
+// 5. Успешная оплата (Зачисление баланса)
+bot.on('successful_payment', async (msg) => {
+    const payment = msg.successful_payment;
+    const chatId = msg.chat.id;
+    
+    // Достаем ID пользователя из payload (pay_USERID_TIMESTAMP)
+    const parts = payment.invoice_payload.split('_');
+    const telegramUserId = parts[1]; 
+    
+    const starsAmount = payment.total_amount;
+    const rubAmount = starsAmount * 2; // 1 Star = 2 рубля
+
+    console.log(`[PAYMENT] User TG ${telegramUserId} paid ${starsAmount} Stars`);
+
+    try {
+        // 1. Ищем пользователя в БД по его Telegram ID
+        const { data: profile, error: findError } = await supabase
+            .from('profiles')
+            .select('id, balance')
+            .eq('telegram_id', telegramUserId.toString())
+            .single();
+
+        // Если пользователь не привязал TG ID к сайту
+        if (!profile) {
+            return bot.sendMessage(chatId, 
+                `⚠️ Вы оплатили ${starsAmount} Stars, но ваш Telegram ID не привязан к аккаунту на сайте!\n\nЗайдите в личный кабинет на сайте и укажите ваш ID: ${telegramUserId}`, 
+                { parse_mode: 'Markdown' }
+            );
+        }
+
+        // 2. Зачисляем баланс
+        const newBalance = (parseFloat(profile.balance) || 0) + rubAmount;
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ balance: newBalance })
+            .eq('id', profile.id);
+
+        if (updateError) throw updateError;
+
+        // 3. Отправляем успешное сообщение
+        bot.sendMessage(chatId, 
+            `✅ *Оплата прошла успешно!*\n\n⭐ Начислено: ${starsAmount} Stars\n💵 Зачислено на баланс: ${rubAmount} ₽\n\n💰 Ваш текущий баланс: *${newBalance} ₽*`, 
+            { parse_mode: 'Markdown' }
+        );
+
+    } catch (e) {
+        console.error('Ошибка зачисления:', e);
+        bot.sendMessage(chatId, '❌ Ошибка базы данных при зачислении. Свяжитесь с админом.');
+    }
+});
+
 bot.on('document', async (msg) => {
     if (msg.from.id.toString() !== ADMIN_ID) return;
 
