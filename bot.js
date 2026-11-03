@@ -68,6 +68,80 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
 });
 
 // ==========================================
+// ОБРАБОТКА ПЛАТЕЖЕЙ TELEGRAM STARS
+// ==========================================
+
+// Команда для пополнения (вызывается по ссылке из сайта)
+bot.onText(/\/start pay_(\d+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const amountStars = parseInt(match[1]); // Количество звезд
+
+    // Создаем счет (Invoice) на оплату
+    try {
+        await bot.sendInvoice(chatId, 
+            'Пополнение баланса AffitDev', 
+            `Пополнение на ${amountStars} Stars`, 
+            `pay_${userId}_${Date.now()}`, // Payload (уникальный ID заказа)
+            '', // provider_token (пустой для Stars)
+            'XTR', // Валюта Telegram Stars
+            [{ label: 'Stars', amount: amountStars }] // Цена в Stars
+        );
+    } catch (e) {
+        bot.sendMessage(chatId, 'Ошибка создания счета: ' + e.message);
+    }
+});
+
+// Подтверждение перед оплатой (обязательно, Telegram требует ответ за 10 секунд)
+bot.on('pre_checkout_query', async (query) => {
+    // Всегда подтверждаем (можно добавить проверки)
+    await bot.answerPreCheckoutQuery(query.id, true);
+});
+
+// Успешная оплата
+bot.on('successful_payment', async (msg) => {
+    const payment = msg.successful_payment;
+    const chatId = msg.chat.id;
+    
+    // Достаем ID пользователя из payload (pay_USERID_TIMESTAMP)
+    const parts = payment.invoice_payload.split('_');
+    const telegramUserId = parts[1]; 
+
+    // Сумма Stars (в копейках, т.е. 1 Star = 1 единица)
+    const starsAmount = payment.total_amount;
+    
+    // Курс: 1 Star = 2 рубля (можешь изменить)
+    const rubAmount = starsAmount * 2;
+
+    console.log(`[PAYMENT] User ${telegramUserId} paid ${starsAmount} Stars`);
+
+    // Обновляем баланс в Supabase (используем service key, который у тебя уже есть в боте)
+    try {
+        // Получаем текущий баланс
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('balance')
+            .eq('telegram_id', telegramUserId.toString())
+            .single();
+
+        if (profile) {
+            const newBalance = (parseFloat(profile.balance) || 0) + rubAmount;
+            await supabase
+                .from('profiles')
+                .update({ balance: newBalance })
+                .eq('telegram_id', telegramUserId.toString());
+
+            bot.sendMessage(chatId, `✅ Баланс пополнен на ${rubAmount} ₽! (${starsAmount} Stars)`);
+        } else {
+            bot.sendMessage(chatId, '❌ Ошибка: ваш Telegram ID не привязан к аккаунту на сайте. Зайдите в профиль и укажите ID.');
+        }
+    } catch (e) {
+        console.error('Ошибка обновления баланса:', e);
+        bot.sendMessage(chatId, '❌ Ошибка зачисления. Напишите админу.');
+    }
+});
+
+// ==========================================
 // АДМИН-ПАНЕЛЬ (Загрузка файла и генерация ссылки)
 // ==========================================
 bot.onText(/\/admin/, (msg) => {
