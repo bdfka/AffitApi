@@ -64,15 +64,15 @@ bot.onText(/\/start/, (msg) => {
 });
 
 bot.onText(/\/account/, (msg) => {
-    bot.sendMessage(msg.chat.id, `👤 *Личный кабинет*\n\nПерейдите на сайт:\n🔗 https://твой-сайт.github.io/profile.html`, { parse_mode: 'Markdown' });
+    bot.sendMessage(msg.chat.id, `👤 *Личный кабинет*\n\nПерейдите на сайт:\n🔗 bdfka.github.io/AffitDev/profile.html`, { parse_mode: 'Markdown' });
 });
 
 bot.onText(/\/list/, (msg) => {
-    bot.sendMessage(msg.chat.id, `📦 *Меню ресурсов*\n\nВсе доступные ресурсы на сайте:\n🔗 https://твой-сайт.github.io/resources.html`, { parse_mode: 'Markdown' });
+    bot.sendMessage(msg.chat.id, `📦 *Меню ресурсов*\n\nВсе доступные ресурсы на сайте:\n🔗 bdfka.github.io/AffitDev/resources.html`, { parse_mode: 'Markdown' });
 });
 
 bot.onText(/\/help/, (msg) => {
-    bot.sendMessage(msg.chat.id, `❓ *Помощь*\n\nЕсли возникли проблемы, напишите админу: @твой_тг`);
+    bot.sendMessage(msg.chat.id, `❓ *Помощь*\n\nЕсли возникли проблемы, напишите админу: @MinecraftCoderBdfka`);
 });
 
 // ==========================================
@@ -130,7 +130,7 @@ bot.on('callback_query', async (query) => {
 
                 bot.sendMessage(chatId, 
                     `✅ *Файл получен!*\n\n📄 Имя: \`${fileName}\`\n🔗 Ссылка: ${fileLink}\n\nСкопируйте ссылку и вставьте её в админ-панель сайта.`, 
-                    { parse_mode: 'Markdown' }
+                    { parse_mode: 'HTML' }
                 );
             } catch (error) {
                 console.error('[ERROR] Ошибка при получении файла:', error);
