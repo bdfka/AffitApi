@@ -105,7 +105,7 @@ bot.on('document', async (msg) => {
     }
 });
 
-const SELF_URL = 'https://AffitApi.onrender.com'; 
+const SELF_URL = 'https://affitapi.onrender.com'; 
 
 setInterval(() => {
     fetch(SELF_URL)
