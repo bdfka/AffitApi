@@ -148,16 +148,26 @@ app.listen(PORT, () => {
         });
 
         // Защита от спама файлами для обычных юзеров
-        bot.on('document', (msg) => {
-            if (!isAdmin(msg)) {
-                bot.sendMessage(msg.chat.id, '⛔ Отправка файлов доступна только администратору.');
-            }
-        });
+bot.on('document', async (msg) => {
+    if (!isAdmin(msg)) return;
 
-        // Обработка ошибок (чтобы бот не падал)
-        bot.on('polling_error', (error) => {
-            console.error('Polling error:', error.code);
-        });
+    try {
+        // 1. Сначала получаем информацию о файле (file_path)
+        const fileInfo = await bot.getFile(msg.document.file_id);
+        
+        // 2. Теперь получаем прямую ссылку, используя file_path из ответа
+        const fileLink = await bot.getFileLink(fileInfo.file_path);
+        
+        // 3. Отправляем ссылку в чат
+        await bot.sendMessage(msg.chat.id, 
+            `✅ *Файл получен!*\n\n📄 Имя: \`${msg.document.file_name}\`\n🔗 Ссылка: ${fileLink}\n\nСкопируйте ссылку и вставьте её в админ-панель сайта.`, 
+            { parse_mode: 'Markdown' }
+        );
+    } catch (error) {
+        // Если произошла ошибка, бот сообщит о ней
+        bot.sendMessage(msg.chat.id, `❌ Ошибка: ${error.message}`);
+    }
+});
 
     } catch (error) {
         console.error('Критическая ошибка при запуске бота:', error);
