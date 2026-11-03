@@ -104,3 +104,11 @@ bot.on('document', async (msg) => {
         bot.sendMessage(msg.chat.id, `❌ Ошибка: ${error.message}`);
     }
 });
+
+const SELF_URL = 'https://AffitApi.onrender.com'; 
+
+setInterval(() => {
+    fetch(SELF_URL)
+        .then(res => console.log(`[PING] Статус сервера: ${res.status}`))
+        .catch(err => console.error('[PING] Ошибка пинга:', err.message));
+}, 3 * 60 * 1000); // 3 минуты (3 * 60 секунд * 1000 мс)
