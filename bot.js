@@ -65,8 +65,9 @@ async function sendStarsInvoice(chatId, amountStars, userId) {
 // ==========================================
 bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
-    const payload = match[1]; 
+    let payload = match[1] ? match[1].trim() : null; // Добавил .trim() на случай пробелов
 
+    // Если нет параметров — обычное приветствие
     if (!payload) {
         return bot.sendMessage(chatId, 
             `Привет, ${msg.from.first_name}! 👋\n\nДобро пожаловать в *AffitDev*.\n\n🔹 /buy — Пополнить баланс\n🔹 /list — Ресурсы`, 
@@ -74,15 +75,21 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
         );
     }
 
-    // Если это ссылка на пополнение (pay_100)
-    if (payload.startsWith('pay_')) {
-        const amount = parseInt(payload.split('_')[1]);
-        if (!isNaN(amount)) {
-            return await sendStarsInvoice(chatId, amount, msg.from.id);
+    // --- ЖЕЛЕЗОБЕТОННАЯ ПРОВЕРКА НА ОПЛАТУ ---
+    // Если параметр начинается с "pay_", мы сразу выставляем счет и ВЫХОДИМ из функции.
+    if (payload.includes('pay_')) {
+        // Извлекаем число (все цифры после pay_)
+        const amountStr = payload.replace('pay_', '').replace(/[^0-9]/g, ''); 
+        const amount = parseInt(amountStr);
+        
+        if (!isNaN(amount) && amount > 0) {
+            await sendStarsInvoice(chatId, amount, msg.from.id);
+            return; // ВАЖНО: Останавливаем выполнение, чтобы бот не искал файл!
         }
     }
+    // -----------------------------------------
 
-    // Если это ссылка на скачивание файла
+    // Если это не оплата, значит это ссылка на файл (начинаем поиск)
     try {
         const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
         const fileData = db[payload];
