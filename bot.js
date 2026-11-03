@@ -38,7 +38,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
 
     if (!payload) {
         return bot.sendMessage(chatId, 
-            `Привет, ${msg.from.first_name}! 👋\n\nДобро пожаловать в *AffitDev*.\n\n🔹 /account — Личный кабинет\n🔹 /list — Меню ресурсов`, 
+            `Привет, ${msg.from.first_name}! 👋\n\nДобро пожаловать в *AffitDev*.\n\n🔹 /buy — Пополнить баланс`, 
             { parse_mode: 'Markdown' }
         );
     }
@@ -49,7 +49,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
             const fileData = db[payload];
 
             if (!fileData) {
-                return bot.sendMessage(chatId, '❌ Файл не найден. Возможно, ссылка устарела.');
+                return bot.sendMessage(chatId, '❌ Файл не найден. Чет тебе не то дали.');
             }
 
             bot.sendMessage(chatId, '⏳ Отправляю ваш файл...');
