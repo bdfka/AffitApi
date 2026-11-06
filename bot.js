@@ -43,7 +43,7 @@ setInterval(() => {
     fetch(SELF_URL)
         .then(res => console.log(`[PING] Статус сервера: ${res.status}`))
         .catch(err => console.error('[PING] Ошибка пинга:', err.message));
-}, 3 * 60 * 1000); // Пинг каждые 3 минуты
+}, 3 * 60 * 1000); // 3 минуты
 
 // ==========================================
 // ФУНКЦИЯ ВЫСТАВЛЕНИЯ СЧЕТА (INVOICE)
@@ -51,11 +51,11 @@ setInterval(() => {
 async function sendStarsInvoice(chatId, amountStars, userId) {
     try {
         await bot.sendInvoice(chatId, 
-            'Пополнение баланса AffitDev', 
-            `Вы покупаете ${amountStars} Telegram Stars. На сайт будет зачислено ${amountStars * 2} рублей.`, 
-            `pay_${userId}_${Date.now()}`, // Payload
+            'Обмен звёзд на рубли', 
+            `Вы отдаете ${amountStars} Telegram Stars. На баланс сайта будет зачислено ${amountStars * 2} рублей.`, 
+            `pay_${userId}_${Date.now()}`, 
             '', 
-            'XTR', // Валюта Telegram Stars
+            'XTR', 
             [{ label: 'Telegram Stars', amount: amountStars }] 
         );
     } catch (e) {
@@ -72,12 +72,12 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
 
     if (!payload) {
         return bot.sendMessage(chatId, 
-            `Привет, ${msg.from.first_name}! 👋\n\nДобро пожаловать в *AffitDev*.\n\n🔹 /buy — Пополнить баланс на сайте\n🔹 /account — Личный кабинет`, 
+            `Привет, ${msg.from.first_name}! 👋\n\nДобро пожаловать в *AffitDev*.\n\n🔹 /buy — Пополнить баланс на сайте\n🔹 /account — Личный кабинет\n🔹 /стата — Проверить статус сервера`, 
             { parse_mode: 'Markdown' }
         );
     }
 
-    // Если это ссылка на пополнение (pay_100)
+    // 1. Если это оплата (pay_100)
     if (payload.includes('pay_')) {
         const amountStr = payload.replace('pay_', '').replace(/[^0-9]/g, ''); 
         const amount = parseInt(amountStr);
@@ -88,7 +88,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
         }
     }
 
-    // Если это ссылка на скачивание файла
+    // 2. Если это ссылка на файл
     try {
         const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
         const fileData = db[payload];
@@ -117,12 +117,18 @@ bot.onText(/\/buy/, (msg) => {
     const opts = {
         reply_markup: {
             inline_keyboard: [
-                [{ text: 'Купить 50 ⭐ (100 ₽)', callback_data: 'buy_50' }, { text: 'Купить 100 ⭐ (200 ₽)', callback_data: 'buy_100' }],
-                [{ text: 'Купить 250 ⭐ (500 ₽)', callback_data: 'buy_250' }, { text: 'Купить 500 ⭐ (1000 ₽)', callback_data: 'buy_500' }]
+                [
+                    { text: '⭐ 50 Stars → 100 ₽', callback_data: 'buy_50' }, 
+                    { text: '⭐ 100 Stars → 200 ₽', callback_data: 'buy_100' }
+                ],
+                [
+                    { text: '⭐ 250 Stars → 500 ₽', callback_data: 'buy_250' }, 
+                    { text: '⭐ 500 Stars → 1000 ₽', callback_data: 'buy_500' }
+                ]
             ]
         }
     };
-    bot.sendMessage(chatId, '💎 *Пополнение баланса сайта*\n\nВыберите пакет. Бот примет Stars, а на сайт зачислит рубли (1 ⭐ = 2 ₽):', { parse_mode: 'Markdown', reply_markup: opts.reply_markup });
+    bot.sendMessage(chatId, '💎 *Обмен звёзд на рубли*\n\nВыберите, сколько Stars вы хотите отдать. Эти рубли зачислятся на ваш баланс на сайте (1 ⭐ = 2 ₽):', { parse_mode: 'Markdown', reply_markup: opts.reply_markup });
 });
 
 // Обработка кнопок покупки
@@ -177,21 +183,88 @@ bot.on('successful_payment', async (msg) => {
 
         if (updateError) throw updateError;
 
-        // 3. Отвечаем пользователю (ПОНЯТНО И ЧЕТКО)
+        // 3. Отвечаем пользователю
         bot.sendMessage(chatId, 
-            `✅ *Оплата успешно завершена!*\n\n⭐ Вы оплатили: *${starsAmount} Stars*\n💵 На баланс сайта зачислено: *${rubAmount} ₽*\n\n💰 Ваш текущий баланс на сайте: *${newBalance} ₽*\n\n_(Обновите страницу кошелька на сайте, чтобы увидеть изменения)_`, 
+            `✅ *Обмен успешно завершен!*\n\n⭐ Вы отдали: *${starsAmount} Stars*\n💵 На баланс сайта зачислено: *${rubAmount} ₽*\n\n💰 Ваш текущий баланс на сайте: *${newBalance} ₽*\n\n_(Обновите страницу кошелька на сайте, чтобы увидеть изменения)_`, 
             { parse_mode: 'Markdown' }
         );
 
         // 4. Уведомляем тебя (админа)
         bot.sendMessage(ADMIN_ID, 
-            `💰 *Новое пополнение!*\nПользователь: @${msg.from.username || 'без_юзернейма'} (TG ID: ${telegramUserId})\nОплатил: ${starsAmount} Stars\nНа сайт начислено: ${rubAmount} ₽`, 
+            `💰 *Новое пополнение!*\nПользователь: @${msg.from.username || 'без_юзернейма'} (TG ID: ${telegramUserId})\nОтдал: ${starsAmount} Stars\nНа сайт зачислено: ${rubAmount} ₽`, 
             { parse_mode: 'Markdown' }
         );
 
     } catch (e) {
         console.error('Ошибка зачисления:', e);
         bot.sendMessage(chatId, '❌ Ошибка базы данных при зачислении. Свяжитесь с админом.');
+    }
+});
+
+// ==========================================
+// СТАТУС MINECRAFT СЕРВЕРА (РАБОТАЕТ В ГРУППАХ)
+// ==========================================
+bot.onText(/\/стата(?: (.+))?/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const serverIp = match[1] ? match[1].trim() : null;
+
+    if (!serverIp) {
+        return bot.sendMessage(chatId, '❌ Укажите IP сервера. Пример: `/стата mc.viollamine.su`', { parse_mode: 'Markdown' });
+    }
+
+    // Отправляем сообщение "Загрузка..."
+    const loadingMsg = await bot.sendMessage(chatId, '⏳ Проверяю статус сервера...');
+
+    try {
+        // Запрос к бесплатному API mcsrvstat.us
+        const response = await fetch(`https://api.mcsrvstat.us/3/${serverIp}`, {
+            headers: {
+                'User-Agent': 'AffitDev-Bot/1.0 (https://t.me/AffitDev_bot)' // API требует User-Agent
+            }
+        });
+        const data = await response.json();
+
+        // Если сервер офлайн
+        if (!data.online) {
+            return bot.editMessageText(`❌ Сервер \`${serverIp}\` не найден или выключен.`, {
+                chat_id: chatId,
+                message_id: loadingMsg.message_id,
+                parse_mode: 'Markdown'
+            });
+        }
+
+        // Формируем красивый текст
+        const playersOnline = data.players?.online || 0;
+        const playersMax = data.players?.max || 0;
+        const version = data.version || 'Неизвестно';
+        const motd = data.motd?.clean ? data.motd.clean.join('\n') : 'Нет описания';
+        const ping = data.debug?.ping ? `${data.debug.ping} мс` : 'Неизвестно';
+
+        const statusText = `
+<b>📊 Статус сервера:</b> <code>${serverIp}</code>
+        
+✅ <b>Статус:</b> Онлайн
+👥 <b>Онлайн:</b> ${playersOnline} / ${playersMax}
+⚡ <b>Пинг:</b> ${ping}
+📦 <b>Версия:</b> ${version}
+
+📝 <b>Описание:</b>
+${motd}
+        `;
+
+        // Редактируем сообщение "Загрузка..." на результат
+        await bot.editMessageText(statusText, {
+            chat_id: chatId,
+            message_id: loadingMsg.message_id,
+            parse_mode: 'HTML'
+        });
+
+    } catch (error) {
+        console.error('Ошибка при проверке сервера:', error);
+        bot.editMessageText('❌ Ошибка при получении данных о сервере. Попробуйте позже.', {
+            chat_id: chatId,
+            message_id: loadingMsg.message_id
+        });
     }
 });
 
